@@ -32,8 +32,9 @@ export interface OsEvent {
 
 const negativeEnergyKeywords = ['焦虑', '烦', '虚', '累', '崩', '睡不好', '压抑', '垃圾', '难受']
 const positiveEnergyKeywords = ['兴奋', '行动力', '恢复', '开心', '轻松', '舒服']
+const milestoneKeywords = ['完成', '落地', '破壳', '跑通', '通关', '稳了', '正式', '第一条', '里程碑', '心跳', '神经反射']
 const careerKeywords = ['求职', '岗位', 'Boss', 'BOSS', 'boss', 'HR', '面试', '简历', '薪资', '苏州', '杭州', '上海', 'offer', 'Offer', '就业市场', 'JD', '投递', '已读不回']
-const methodKeywords = ['我发现', '我意识到', '以后应该', '可以做成', '规则', '流程', '模板', '提示词', '工具', '自动化', '联动', '监听', '系统', '机制']
+const methodKeywords = ['我发现', '我意识到', '以后应该', '应该', '可以做成', '规则', '流程', '模板', '提示词', '工具', '自动化', '联动', '监听', '系统', '机制']
 const toolKeywords = ['工具', '自动化', '联动', '监听', '机制', '可以做成']
 const promptKeywords = ['提示词', '模板', '规则']
 const workflowKeywords = ['流程', '工作流', '机制']
@@ -46,14 +47,16 @@ function findHits(text: string, keywords: string[]): string[] {
 export function buildSignals(rawText: string): EventSignals {
   const negativeHits = findHits(rawText, negativeEnergyKeywords)
   const positiveHits = findHits(rawText, positiveEnergyKeywords)
-  const emotion = [...new Set([...negativeHits, ...positiveHits])]
+  const milestoneHits = findHits(rawText, milestoneKeywords)
+  const milestoneEmotions = negativeHits.length === 0 && milestoneHits.length > 0 ? ['成就感', '稳定', '里程碑'] : []
+  const emotion = [...new Set([...negativeHits, ...positiveHits, ...milestoneEmotions])]
   const careerHits = findHits(rawText, careerKeywords)
   const startupHits = findHits(rawText, startupKeywords)
 
   let energyImpact = 0
   if (negativeHits.length > 0) {
     energyImpact = -1
-  } else if (positiveHits.length > 0) {
+  } else if (positiveHits.length > 0 || milestoneHits.length > 0) {
     energyImpact = 1
   }
 

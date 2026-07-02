@@ -3,6 +3,10 @@ import type { OsEvent } from '../emit-event.ts'
 import { appendJsonLineUnique, ensureDir, formatDateParts, summarize } from '../os-utils.ts'
 
 function categorize(rawText: string): string {
+  if (['里程碑', '第一条', '正式', '完成', '落地', '破壳', '跑通', '通关', '心跳', '神经反射'].some((keyword) => rawText.includes(keyword))) {
+    return '里程碑事件'
+  }
+
   if (['求职', '岗位', 'Boss', 'BOSS', 'boss', 'HR', '简历', '薪资', 'offer', 'Offer', '就业市场'].some((keyword) => rawText.includes(keyword))) {
     return '求职压力'
   }
@@ -11,7 +15,7 @@ function categorize(rawText: string): string {
     return '身体疲劳'
   }
 
-  if (['行动力', '兴奋', '开心', '轻松'].some((keyword) => rawText.includes(keyword))) {
+  if (['行动力', '兴奋', '开心', '轻松', '稳了'].some((keyword) => rawText.includes(keyword))) {
     return '行动力恢复'
   }
 

@@ -67,3 +67,34 @@ logs/daemon.log
 - JD 导入：把 Boss JD 截图或 `.txt` 放入 `inbox/job-screenshots/pending/`
 
 JD 图片没有 OCR 能力时，会读取同名 `.txt` sidecar 作为 fallback。所有导入只生成 draft，不会自动投递，不会联系 HR。
+
+## 事件分发边界
+
+`add:diary` 写入日记后会立即生成 event 并 dispatch，不需要再手动运行 `os:run`。`os:watch` 只是监听文件入口和事件目录，不要求启动 `ai-os`、`energy-os` 或 OfferFlow。
+
+`ai-os` method candidates 和 `energy-os` energy events 是两条不同消费线：
+
+- 命中 `methodCandidate` 只代表这条日记有方法、工具、流程或系统沉淀价值。
+- 命中 `energyImpact !== 0` 或 `emotion` 非空，才会进入 `energy-os`。
+- `energy-os` 只记录情绪、能量、压力、行动力、里程碑等能量相关事件。
+
+因此，有些日记会进入 `ai-os/inbox/method-candidates/`，但不会生成 energy event。这不是漏分发，而是信号不同。
+
+`energy-os` 使用月文件：
+
+```txt
+energy-os/data/energy-events/YYYY-MM.jsonl
+```
+
+例如 2026-07-03 的能量事件仍会追加到 `2026-07.jsonl`，不会创建 `2026-07-03.jsonl`。
+
+## 方法候选确认机制
+
+method candidate 已升级为自动分级，不再每条都等待人工确认：
+
+- `auto_log`：普通候选自动归档，不进入正式规则。
+- `auto_draft`：中等价值候选自动生成 `ai-os/inbox/method-drafts/` 草稿。
+- `needs_review`：高风险候选进入 `ai-os/inbox/review-queue/`。
+- `auto_promote_candidate`：多次重复、低风险、高置信度的方法可成为正式 playbook 草稿候选。
+
+系统仍不会直接写入正式 `ai-os/docs/playbooks/`。
