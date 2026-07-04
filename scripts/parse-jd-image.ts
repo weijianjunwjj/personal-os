@@ -56,12 +56,15 @@ const techKeywords = [
   'Vue',
   'Vue2',
   'Vue3',
+  'Vue Router',
+  'Vuex',
+  'Pinia',
   'TypeScript',
   'JavaScript',
+  'HTML5',
+  'CSS3',
   'Element',
   'Element Plus',
-  'Pinia',
-  'Vuex',
   'ECharts',
   'React',
   'Redux',
@@ -71,6 +74,21 @@ const techKeywords = [
   'Java',
   'Go',
   'Python',
+  'uni-app',
+  'Taro',
+  '小程序',
+  'Shopify',
+  'Webpack',
+  'vite',
+  'Babel',
+  'NPM',
+  'Yarn',
+  'Pnpm',
+  'SPA',
+  'AJAX',
+  'JSON',
+  'ESLint',
+  'uView',
   'MQTT',
   'Cursor',
   'Copilot',
@@ -78,9 +96,13 @@ const techKeywords = [
   'LLM',
 ]
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function labelValue(rawText: string, labels: string[]): string | undefined {
   for (const label of labels) {
-    const match = rawText.match(new RegExp(`${label}\\s*[:：]\\s*([^\\r\\n]+)`, 'i'))
+    const match = rawText.match(new RegExp(`${escapeRegExp(label)}\\s*[:：]\\s*([^\\r\\n]+)`, 'i'))
     if (match?.[1]?.trim()) {
       return match[1].trim()
     }
@@ -89,9 +111,21 @@ function labelValue(rawText: string, labels: string[]): string | undefined {
   return undefined
 }
 
+function hasToken(rawText: string, token: string): boolean {
+  const escaped = escapeRegExp(token)
+  if (/^[A-Za-z0-9.+#-]+$/.test(token)) {
+    return new RegExp(`(^|[^A-Za-z0-9])${escaped}(?=$|[^A-Za-z0-9])`, 'i').test(rawText)
+  }
+
+  return rawText.toLowerCase().includes(token.toLowerCase())
+}
+
 function keywordHits(rawText: string, keywords: string[]): string[] {
-  const lowerText = rawText.toLowerCase()
-  return keywords.filter((keyword) => lowerText.includes(keyword.toLowerCase()))
+  return keywords.filter((keyword) => hasToken(rawText, keyword))
+}
+
+function hasAny(rawText: string, keywords: string[]): boolean {
+  return keywordHits(rawText, keywords).length > 0
 }
 
 function splitList(value?: string): string[] {
@@ -103,6 +137,10 @@ function splitList(value?: string): string[] {
     .split(/[、,，;；]/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)]
 }
 
 async function readSidecarText(inputPath: string): Promise<string | undefined> {
@@ -128,6 +166,48 @@ async function readRawText(inputPath: string): Promise<string | undefined> {
   return undefined
 }
 
+function isLikelyMojibake(value: string): boolean {
+  return /[锟�]|[绌垝诧湪]|[�]/.test(value)
+}
+
+function hasJavaBackendRisk(rawText: string): boolean {
+  const javaScriptSafe = rawText.replace(/JavaScript|Javascript|\bJS\b/gi, ' ')
+  return /(^|[^A-Za-z0-9])Java(?=$|[^A-Za-z0-9])/.test(javaScriptSafe) ||
+    /(Java\s*(后端|服务端|接口|Spring|Spring\s*Boot|SpringCloud))|((后端|服务端|接口)\s*Java)/i.test(javaScriptSafe)
+}
+
+function hasBackendHeavyRisk(rawText: string): boolean {
+  return hasJavaBackendRisk(rawText) ||
+    hasAny(rawText, ['Go', 'Python', '后端主力', '全栈主力', '服务端主力'])
+}
+
+function hasNodeFullstackRisk(rawText: string): boolean {
+  return hasAny(rawText, ['Node.js', 'NestJS']) || /(^|[^A-Za-z0-9])Node(?=$|[^A-Za-z0-9])/.test(rawText)
+}
+
+function hasLightReactMention(rawText: string): boolean {
+  return /(了解|理解|熟悉)?\s*React\s*(设计原理|原理|优先|加分|有经验者优先)/i.test(rawText) ||
+    /(了解|理解|熟悉)\s*React/i.test(rawText)
+}
+
+function hasReactRisk(rawText: string, vueRelated: boolean): boolean {
+  const reactRelated = hasAny(rawText, ['React', 'Redux', 'Next.js'])
+  if (!reactRelated) {
+    return false
+  }
+
+  const strongReact =
+    hasAny(rawText, ['Redux', 'Next.js']) ||
+    /React\s*(项目经验|开发经验|技术栈|为主|主导|框架)/i.test(rawText) ||
+    /(负责|基于|使用|熟练掌握|精通)\s*React/i.test(rawText)
+
+  if (vueRelated && hasLightReactMention(rawText) && !strongReact) {
+    return false
+  }
+
+  return strongReact || !vueRelated
+}
+
 function buildRecommendation(
   hints: JdImportDraft['matchHints'],
   needHumanReview: boolean,
@@ -135,31 +215,35 @@ function buildRecommendation(
   if (hints.reactRisk || hints.backendHeavyRisk || (hints.nodeFullstackRisk && !hints.vueRelated)) {
     return {
       recommendedCategory: 'give_up',
-      reason: '出现 React / Node / 后端主力风险，不建议作为主攻机会。',
+      reason: '出现 React 主力、Node 全栈或后端主力风险，不建议作为主攻机会。',
       confidence: 0.72,
     }
   }
 
-  if (hints.vueRelated && (hints.dataPlatformRelated || hints.visualizationRelated) && !needHumanReview) {
+  if (hints.vueRelated && (hints.dataPlatformRelated || hints.visualizationRelated)) {
     return {
-      recommendedCategory: 'main_attack',
-      reason: 'Vue 与中后台/数据平台/可视化信号明显，且核心字段完整。',
-      confidence: 0.86,
+      recommendedCategory: needHumanReview ? 'wait_review' : 'main_attack',
+      reason: needHumanReview
+        ? 'Vue 是明确主线，包含 PC 管理后台、数据平台或可视化、Vuex/Pinia、TypeScript、工程化体系；React 仅轻量提及或需确认占比，后端只是协作，不是主力要求。'
+        : 'Vue 是明确主线，包含中后台/数据平台/可视化、TypeScript 或工程化体系，且未发现硬风险。',
+      confidence: needHumanReview ? 0.78 : 0.86,
     }
   }
 
   if (hints.vueRelated) {
     return {
-      recommendedCategory: 'wait_review',
-      reason: 'Vue 匹配存在，但信息不完整或需要人工确认。',
-      confidence: 0.64,
+      recommendedCategory: needHumanReview ? 'wait_review' : 'low_cost_probe',
+      reason: needHumanReview
+        ? 'Vue 匹配存在，但信息不完整或存在需要人工确认的方向。'
+        : 'Vue 匹配存在，但中后台/数据平台/可视化信号不强，适合低成本确认。',
+      confidence: needHumanReview ? 0.68 : 0.62,
     }
   }
 
   return {
-    recommendedCategory: 'low_cost_probe',
-    reason: '未发现明显主攻匹配或高风险信号，适合低成本确认。',
-    confidence: 0.52,
+    recommendedCategory: needHumanReview ? 'wait_review' : 'low_cost_probe',
+    reason: '未发现明确主攻匹配或硬风险，适合低成本确认。',
+    confidence: needHumanReview ? 0.48 : 0.52,
   }
 }
 
@@ -173,14 +257,19 @@ export async function parseJdImage(inputPath: string, displayPath = inputPath): 
   const city = labelValue(rawText, ['城市', '工作城市'])
   const salaryRange = labelValue(rawText, ['薪资', '薪水', '薪酬'])
   const district = labelValue(rawText, ['区域', '区', '地点'])
-  const vueRelated = keywordHits(rawText, ['Vue', 'Vue2', 'Vue3']).length > 0
-  const reactRelated = keywordHits(rawText, ['React', 'Redux', 'Next.js']).length > 0
-  const nodeRelated = keywordHits(rawText, ['Node.js', 'Node', 'NestJS']).length > 0
-  const mqttRelated = keywordHits(rawText, ['MQTT']).length > 0
-  const backendHeavyRisk = keywordHits(rawText, ['Java', 'Go', 'Python', '后端主力', '全栈', '服务端']).length > 0
-  const dataPlatformRelated = keywordHits(rawText, ['数据平台', '中后台', '后台管理']).length > 0
-  const visualizationRelated = keywordHits(rawText, ['ECharts', '可视化', '图表']).length > 0
-  const aiBonus = keywordHits(rawText, ['AI', 'Cursor', 'Copilot', 'Codex', 'LLM', 'AI 辅助']).length > 0
+  const companyIndustry = labelValue(rawText, ['行业'])
+  const companySize = labelValue(rawText, ['规模', '公司规模'])
+  const experienceRequired = labelValue(rawText, ['经验', '工作经验'])
+  const educationRequired = labelValue(rawText, ['学历', '教育'])
+  const vueRelated = hasAny(rawText, ['Vue', 'Vue2', 'Vue3', 'Vue Router', 'Vuex', 'Pinia'])
+  const reactRelated = hasAny(rawText, ['React', 'Redux', 'Next.js'])
+  const nodeFullstackRisk = hasNodeFullstackRisk(rawText)
+  const mqttRelated = hasAny(rawText, ['MQTT'])
+  const backendHeavyRisk = hasBackendHeavyRisk(rawText)
+  const dataPlatformRelated = hasAny(rawText, ['数据平台', '中后台', '后台管理', '管理后台', 'PC管理后台'])
+  const visualizationRelated = hasAny(rawText, ['ECharts', '可视化', '图表', '大屏'])
+  const aiBonus = hasAny(rawText, ['AI', 'Cursor', 'Copilot', 'Codex', 'LLM', 'AI 辅助'])
+  const reactRisk = hasReactRisk(rawText, vueRelated)
 
   const requiredFields: Array<[string, string | undefined]> = [
     ['company.name', companyName],
@@ -191,17 +280,22 @@ export async function parseJdImage(inputPath: string, displayPath = inputPath): 
   const missingFields = requiredFields.filter(([, value]) => !value).map(([field]) => field)
 
   const warnings: string[] = []
-  if (!rawText) warnings.push('没有可解析 OCR 文本；需要人工查看截图。')
-  if (reactRelated && !vueRelated) warnings.push('出现 React / Redux / Next.js 风险信号。')
-  if (nodeRelated) warnings.push('出现 Node.js / NestJS 全栈或后端相关风险信号。')
-  if (mqttRelated) warnings.push('检测到 MQTT 风险，需确认是否涉及前端之外的物联网通信协议能力。')
+  if (!rawText) warnings.push('没有可解析 OCR 文本，需要人工查看截图。')
+  if (rawText && isLikelyMojibake(rawText)) warnings.push('OCR/sidecar 文本疑似 mojibake，请重新提供 UTF-8 文本。')
+  if (reactRisk) warnings.push('出现 React / Redux / Next.js 主力风险信号。')
+  if (reactRelated && !reactRisk && vueRelated) warnings.push('React 仅轻量提及，需面试确认占比。')
+  if (nodeFullstackRisk) warnings.push('出现 Node.js / NestJS 全栈或后端相关风险信号。')
+  if (mqttRelated) warnings.push('检测到 MQTT / 物联网通信协议风险，需确认是否涉及前端之外的通信协议能力。')
   if (backendHeavyRisk) warnings.push('出现 Java / Go / Python / 后端主力风险信号。')
+  if (hasAny(rawText, ['uni-app', 'Taro', 'Shopify', '小程序'])) {
+    warnings.push('包含 uni-app / Taro / Shopify / 小程序 / 独立站方向，需确认实际占比。')
+  }
   if (missingFields.length > 0) warnings.push(`缺失字段：${missingFields.join(', ')}`)
 
   const matchHints = {
     vueRelated,
-    reactRisk: reactRelated && !vueRelated,
-    nodeFullstackRisk: nodeRelated,
+    reactRisk,
+    nodeFullstackRisk,
     aiBonus,
     dataPlatformRelated,
     visualizationRelated,
@@ -218,10 +312,14 @@ export async function parseJdImage(inputPath: string, displayPath = inputPath): 
     },
     company: {
       name: companyName,
+      industry: companyIndustry,
+      size: companySize,
     },
     position: {
       title: positionTitle,
       salaryRange,
+      experienceRequired,
+      educationRequired,
       city,
       district,
     },
@@ -229,7 +327,10 @@ export async function parseJdImage(inputPath: string, displayPath = inputPath): 
       responsibilities: splitList(responsibilityText),
       requirements: splitList(requirementText),
       techStack,
-      keywords: [...new Set([...techStack, ...keywordHits(rawText, ['数据平台', '中后台', '可视化', 'AI 辅助开发'])])],
+      keywords: unique([
+        ...techStack,
+        ...keywordHits(rawText, ['数据平台', '中后台', '后台管理', '管理后台', '可视化', '大屏', 'AI 辅助', '天使轮', '不需要融资']),
+      ]),
     },
     matchHints,
     offerflow: buildRecommendation(matchHints, needHumanReview),

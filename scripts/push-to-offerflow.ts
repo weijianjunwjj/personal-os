@@ -8,10 +8,14 @@ export interface OfferFlowImportDraft {
   sourceType: 'boss_screenshot'
   sourceImagePath: string
   companyName?: string
+  companyIndustry?: string
+  companySize?: string
   positionTitle?: string
   city?: string
   district?: string
   salaryRange?: string
+  experienceRequired?: string
+  educationRequired?: string
   techStack: string[]
   responsibilities: string[]
   requirements: string[]
@@ -40,10 +44,14 @@ export function toOfferFlowDraft(draft: JdImportDraft): OfferFlowImportDraft {
     sourceType: 'boss_screenshot',
     sourceImagePath: draft.source.imagePath,
     companyName: draft.company.name,
+    companyIndustry: draft.company.industry,
+    companySize: draft.company.size,
     positionTitle: draft.position.title,
     city: draft.position.city,
     district: draft.position.district,
     salaryRange: draft.position.salaryRange,
+    experienceRequired: draft.position.experienceRequired,
+    educationRequired: draft.position.educationRequired,
     techStack: draft.jd.techStack,
     responsibilities: draft.jd.responsibilities,
     requirements: draft.jd.requirements,
